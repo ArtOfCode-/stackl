@@ -1,0 +1,7 @@
+build/
+dist/
+stackl.egg-info/
+test.py
+.idea/
+cookies.p
+stackl/__pycache__/
