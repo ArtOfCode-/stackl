@@ -84,12 +84,13 @@ EVENT_CLASSES = [
 
 
 class Event:
-    def __init__(self, event_dict, server):
+    def __init__(self, event_dict, server, client):
         self.type_id = int(event_dict['event_type'])
         self.name = EVENT_NAME[self.type_id - 1]
         self.shorthand = EVENT_SHORTHAND[self.type_id - 1]
         self.raw = event_dict
         self.server = server
+        self.client = client
 
         class_data = [x for x in EVENT_CLASSES if x.id == self.type_id]
         if len(class_data) > 0:

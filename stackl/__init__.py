@@ -14,7 +14,7 @@ from stackl.events import Event
 from stackl.wsclient import WSClient
 
 
-VERSION = '0.0.3'
+VERSION = '0.0.4'
 
 
 class ChatClient:
@@ -236,7 +236,7 @@ class ChatClient:
         events = [x for s in events for x in s]
 
         for event_data in events:
-            event = Event(event_data, server)
+            event = Event(event_data, server, self)
             handlers = [x[0] for x in self._handlers
                         if all([k in event_data and event_data[k] == v for k, v in x[1].items()])]
             for handler in handlers:

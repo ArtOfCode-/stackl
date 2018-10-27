@@ -77,7 +77,10 @@ class Message:
                                    lambda: Room(server, room_id=kwargs.get('room_id')))
         self.user = Helpers.cached(int(kwargs.get('user_id')), 'users',
                                    lambda: User(server, user_id=kwargs.get('user_id')))
-        self.parent_id = kwargs.get('parent_id')
+        self.parent = (Helpers.cached(int(kwargs.get('parent_id')), 'messages',
+                                      lambda: kwargs.get('client').get_message(kwargs.get('parent_id'), server))
+                       if 'client' in kwargs and 'parent_id' in kwargs else None)
+        self.parent_id = kwargs.get('parent_id') if 'parent_id' in kwargs and 'client' not in kwargs else None
 
         self._setup_delegate_methods()
 
