@@ -1,13 +1,16 @@
 import sys
+import threading
 from logging import StreamHandler
 import logging
 import os.path
 import pickle
+import json
 import requests
 from bs4 import BeautifulSoup
 from stackl.errors import LoginError, InvalidOperationError
 from stackl.models import Room
 from stackl.events import Event
+from stackl.wsclient import WSClient
 
 
 VERSION = '0.0.0a'
@@ -33,8 +36,10 @@ class ChatClient:
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': 'stackl'})
         self.rooms = []
-        self._fkeys = {}
 
+        self._handlers = []
+        self._sockets = {}
+        self._fkeys = {}
         self._authed_servers = []
 
     def login(self, email, password, **kwargs):
@@ -67,6 +72,12 @@ class ChatClient:
             return self.session
 
     def join(self, room_id, server):
+        """
+        Join a room and start processing events from it.
+        :param room_id: the ID of the room you wish to join
+        :param server: the server on which the room is hosted
+        :return: None
+        """
         if server not in self._authed_servers:
             raise InvalidOperationError('Cannot join a room on a host we haven\'t authenticated to!')
 
@@ -88,16 +99,40 @@ class ChatClient:
         ws_auth_data = self.session.post("https://chat.{}/ws-auth".format(server), data={
             'fkey': self._fkeys[server],
             'roomid': room_id
-        })
+        }).json()
 
-        # TODO websocket init
+        cookie_string = ''
+        for cookie in self.session.cookies:
+            if cookie.domain == 'chat.{}'.format(server) or cookie.domain == '.{}'.format(server):
+                cookie_string += '{}={};'.format(cookie.name, cookie.value)
+
+        last_event_time = sorted(events, key=lambda x: x['time_stamp'])[-1]['time_stamp']
+        ws_uri = '{}?l={}'.format(ws_auth_data['url'], last_event_time)
+        if server in self._sockets and self._sockets[server].open:
+            self._sockets[server].close()
+
+        self._sockets[server] = WSClient(ws_uri, cookie_string, server, self._on_message)
 
     def send(self, content, room=None, server=None):
+        """
+        Send a message to the specified room.
+        :param content: the contents of the message you wish to send
+        :param room: the ID of the room you wish to send it to
+        :param server: the server on which the room is hosted
+        :return: None
+        """
         if room is None or server is None:
-            raise InvalidOperationError('Cannot send a message to a non-existent room or non-existent server.')
+            raise InvalidOperationError('Cannot send a message to a non-existent room or a non-existent server.')
 
         # TODO
 
+    def add_handler(self, handler, **kwargs):
+        """
+        Add an event handler for messages received from the chat websocket.
+        :param handler: the handler method to call for each received event
+        :return: None
+        """
+        self._handlers.append([handler, kwargs])
 
     def _credential_authenticate(self, email, password, servers):
         """
@@ -158,3 +193,17 @@ class ChatClient:
                 statuses.append(True)
 
         return len(statuses) == 3 and all(statuses)
+
+    def _on_message(self, data, server):
+        data = json.loads(data)
+        events = [v['e'] for k, v in data.items() if k[0] == 'r' and 'e' in v]
+        events = [x for s in events for x in s]
+
+        for event_data in events:
+            event = Event(event_data, server)
+            handlers = [x[0] for x in self._handlers if all([k in event_data and event_data[k] == v for k, v in x[1]])]
+            for handler in handlers:
+                def run_handler():
+                    handler(event, server)
+
+                threading.Thread(name='handler_runner', target=run_handler).start()

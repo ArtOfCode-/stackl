@@ -1,2 +1,3 @@
 requests~=2.20
 beautifulsoup4~=4.6
+websocket-client~=0.53

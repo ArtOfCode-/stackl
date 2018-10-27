@@ -114,3 +114,6 @@ class Event:
 
                 type_object = clazz(server, **initialization_props)
                 setattr(self, method_name, type_object)
+
+        for k, v in event_dict.items():
+            setattr(self, k, v)
