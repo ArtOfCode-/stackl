@@ -81,6 +81,7 @@ class Message:
                                       lambda: kwargs.get('client').get_message(kwargs.get('parent_id'), server))
                        if 'client' in kwargs and 'parent_id' in kwargs else None)
         self.parent_id = kwargs.get('parent_id') if 'parent_id' in kwargs and 'client' not in kwargs else None
+        self._content_source = kwargs.get('content_source')
 
         self._setup_delegate_methods()
 
@@ -89,6 +90,15 @@ class Message:
 
     def is_reply(self):
         return re.match(r'^:\d+ ', self.content) is not None
+
+    def get_content_source(self, client=None):
+        if self._content_source is not None:
+            return self._content_source
+        elif client is not None:
+            return client.get_message_source(self.id, self.server)
+        else:
+            return None
+
 
     # Less ugly than having a method for every one of these that does exactly the same thing.
     def _setup_delegate_methods(self):

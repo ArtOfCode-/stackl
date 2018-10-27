@@ -14,7 +14,7 @@ from stackl.events import Event
 from stackl.wsclient import WSClient
 
 
-VERSION = '0.0.4'
+VERSION = '0.0.5'
 
 
 class ChatClient:
@@ -265,6 +265,9 @@ class ChatClient:
         room_id = re.match(r'/rooms/(\d+)', soup.select('.room-name a')[0].get('href'))[1]
         content = self.session.get('https://chat.{}/message/{}?plain=true'.format(server, message_id)).text
         return Message(server, message_id=message_id, room_id=room_id, user_id=user_id, content=content)
+
+    def get_message_source(self, message_id, server):
+        return self.session.get('https://chat.{}/message/{}?plain=true'.format(server, message_id)).text
 
     def toggle_star(self, message_id, server):
         self._chat_post_fkeyed(server, '/messages/{}/star'.format(message_id))
