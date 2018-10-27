@@ -201,7 +201,8 @@ class ChatClient:
 
         for event_data in events:
             event = Event(event_data, server)
-            handlers = [x[0] for x in self._handlers if all([k in event_data and event_data[k] == v for k, v in x[1]])]
+            handlers = [x[0] for x in self._handlers
+                        if all([k in event_data and event_data[k] == v for k, v in x[1].items()])]
             for handler in handlers:
                 def run_handler():
                     handler(event, server)

@@ -117,3 +117,6 @@ class Event:
 
         for k, v in event_dict.items():
             setattr(self, k, v)
+
+    def __repr__(self):
+        return '<Event {}>'.format(self.__dict__)
