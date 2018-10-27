@@ -47,7 +47,8 @@ class User:
         user_page = requests.get(self.url)
         user_soup = BeautifulSoup(user_page.text, 'html.parser')
 
-        self.username = user_soup.select('.usercard-xxl .user-status')[0].text
+        self.username = user_soup.select('.content h1')[0].text
+        self.is_moderator = '♦' in user_soup.select('.usercard-xxl .user-status')[0].text
         try:
             self.bio = user_soup.select('.user-stats tr')[3].select('td')[-1].text
         except IndexError:
@@ -98,7 +99,6 @@ class Message:
             return client.get_message_source(self.id, self.server)
         else:
             return None
-
 
     # Less ugly than having a method for every one of these that does exactly the same thing.
     def _setup_delegate_methods(self):

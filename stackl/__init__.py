@@ -14,7 +14,7 @@ from stackl.events import Event
 from stackl.wsclient import WSClient
 
 
-VERSION = '0.0.5'
+VERSION = '0.0.6'
 
 
 class ChatClient:
