@@ -35,3 +35,7 @@ class WSClient:
         self._close_socket = True
         if self.ws is not None:
             self.ws.close()
+
+    def send(self, content):
+        if self.ws is not None:
+            self.ws.send(content)

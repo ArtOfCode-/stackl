@@ -3,17 +3,18 @@ import threading
 from logging import StreamHandler
 import logging
 import os.path
+import re
 import pickle
 import json
 import requests
 from bs4 import BeautifulSoup
 from stackl.errors import LoginError, InvalidOperationError
-from stackl.models import Room
+from stackl.models import Room, Message
 from stackl.events import Event
 from stackl.wsclient import WSClient
 
 
-VERSION = '0.0.1'
+VERSION = '0.0.2'
 
 
 class ChatClient:
@@ -41,6 +42,7 @@ class ChatClient:
         self._sockets = {}
         self._fkeys = {}
         self._authed_servers = []
+        self._ids = {}
 
     def login(self, email, password, **kwargs):
         """
@@ -70,6 +72,14 @@ class ChatClient:
         else:
             self._authed_servers = kwargs.get('servers') or [self.default_server]
             return self.session
+
+    def id(self, server):
+        """
+        Get the ID of the logged-in user on the specified server.
+        :param server: the chat server from which to return a user ID
+        :return: Integer
+        """
+        return self._ids[server]
 
     def join(self, room_id, server):
         """
@@ -113,7 +123,7 @@ class ChatClient:
 
         self._sockets[server] = WSClient(ws_uri, cookie_string, server, self._on_message)
 
-    def send(self, content, room=None, server=None):
+    def send(self, content, room=None, room_id=None, server=None):
         """
         Send a message to the specified room.
         :param content: the contents of the message you wish to send
@@ -121,10 +131,29 @@ class ChatClient:
         :param server: the server on which the room is hosted
         :return: None
         """
-        if room is None or server is None:
+        if (room is None and room_id is None) or server is None:
             raise InvalidOperationError('Cannot send a message to a non-existent room or a non-existent server.')
 
-        # TODO
+        if "\n" not in content and len(content) > 500:
+            raise ValueError('Single-line messages must be a maximum of 500 chars long.')
+
+        room_id = room_id or room.id
+        for i in range(1, 3):
+            response = self.session.post('https://chat.{}/chats/{}/messages/new'.format(server, room_id), data={
+                'fkey': self._fkeys[server],
+                'text': content
+            })
+            if response.status_code == 200:
+                break
+            elif i == 3:
+                raise RuntimeError('Failed to send message. No, I don\'t know why.')
+
+        message_data = response.json()
+        parent_match = re.match(r'^:(\d+) ', content)
+        message = Message(server, message_id=message_data['id'], timestamp=message_data['time'], content=content,
+                          room_id=room_id, user_id=self._ids[server],
+                          parent_id=None if parent_match is None else parent_match[1])
+        return message
 
     def add_handler(self, handler, **kwargs):
         """
@@ -191,10 +220,17 @@ class ChatClient:
                 raise LoginError('Failed to log in to {}'.format(server))
             else:
                 statuses.append(True)
+                self._ids[server] = int(re.match(r'/users/(\d+)', topbar_links[0].get('href'))[1])
 
         return len(statuses) == 3 and all(statuses)
 
     def _on_message(self, data, server):
+        """
+        Internal. Handler passed to WSClient to handle incoming websocket data before it reaches the client application.
+        :param data: the raw text data received from the websocket
+        :param server: the server on which the message was received
+        :return: None
+        """
         data = json.loads(data)
         events = [v['e'] for k, v in data.items() if k[0] == 'r' and 'e' in v]
         events = [x for s in events for x in s]
@@ -208,3 +244,67 @@ class ChatClient:
                     handler(event, server)
 
                 threading.Thread(name='handler_runner', target=run_handler).start()
+
+    def _chat_post_fkeyed(self, server, path, data=None):
+        """
+        Sends a POST request to chat to perform an action, automatically inserting the chat server and fkey.
+        :param server: the server on which to perform the action
+        :param path: the host-less path to send the request to
+        :return: requests.Response
+        """
+        req_data = {'fkey': self._fkeys[server]}
+        if data is not None:
+            req_data.update(data)
+        return self.session.post('https://chat.{}{}'.format(server, path), data=req_data)
+
+    def toggle_star(self, message_id, server):
+        self._chat_post_fkeyed(server, '/messages/{}/star'.format(message_id))
+
+    def star_count(self, message_id, server):
+        star_soup = BeautifulSoup(self.session.get('https://chat.{}/transcript/message/{}'.format(server, message_id)),
+                                  'html.parser')
+        counter = star_soup.select('#message-{} .flash .star .times'.format(message_id))
+        if len(counter) > 0:
+            return int(counter[0].text)
+        else:
+            return 0
+
+    def star(self, message_id, server):
+        if not self.has_starred(message_id, server):
+            self.toggle_star(message_id, server)
+
+    def unstar(self, message_id, server):
+        if self.has_starred(message_id, server):
+            self.toggle_star(message_id, server)
+
+    def has_starred(self, message_id, server):
+        star_soup = BeautifulSoup(self.session.get('https://chat.{}/transcript/message/{}'.format(server, message_id)),
+                                  'html.parser')
+        counter = star_soup.select('#message-{} .flash .stars'.format(message_id))
+        return len(counter) > 0 and 'user-star' in counter[0].get('class')
+
+    def cancel_stars(self, message_id, server):
+        self._chat_post_fkeyed(server, '/messages/{}/unstar'.format(message_id))
+
+    def delete(self, message_id, server):
+        self._chat_post_fkeyed(server, '/messages/{}/delete'.format(message_id))
+
+    def edit(self, message_id, server, new_content):
+        self._chat_post_fkeyed(server, '/messages/{}'.format(message_id), data={'text': new_content})
+
+    def toggle_pin(self, message_id, server):
+        self._chat_post_fkeyed(server, '/messages/{}/owner-star'.format(message_id))
+
+    def pin(self, message_id, server):
+        if not self.is_pinned(message_id, server):
+            self.toggle_pin(message_id, server)
+
+    def unpin(self, message_id, server):
+        if self.is_pinned(message_id, server):
+            self.toggle_pin(message_id, server)
+
+    def is_pinned(self, message_id, server):
+        star_soup = BeautifulSoup(self.session.get('https://chat.{}/transcript/message/{}'.format(server, message_id)),
+                                  'html.parser')
+        counter = star_soup.select('#message-{} .flash .stars'.format(message_id))
+        return len(counter) > 0 and 'owner-star' in counter[0].get('class')

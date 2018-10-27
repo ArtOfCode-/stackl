@@ -48,7 +48,10 @@ class User:
         user_soup = BeautifulSoup(user_page.text, 'html.parser')
 
         self.username = user_soup.select('.usercard-xxl .user-status')[0].text
-        self.bio = user_soup.select('.user-stats tr')[3].select('td')[-1].text
+        try:
+            self.bio = user_soup.select('.user-stats tr')[3].select('td')[-1].text
+        except IndexError:
+            self.bio = ''
 
         in_room_cards = user_soup.select('#user-roomcards-container .roomcard')
         self.in_rooms.extend(self._initialize_rooms(in_room_cards))
@@ -90,8 +93,8 @@ class Message:
                         'toggle_pin', 'pin', 'unpin', 'is_pinned']
 
         def create_delegate(method_name):
-            def delegate(client):
-                getattr(client, method_name)(self.id, self.server)
+            def delegate(client, *args):
+                getattr(client, method_name)(self.id, self.server, *args)
 
             return delegate
 
