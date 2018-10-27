@@ -5,7 +5,9 @@ import os.path
 import pickle
 import requests
 from bs4 import BeautifulSoup
-from .errors import LoginError, InvalidOperationError
+from stackl.errors import LoginError, InvalidOperationError
+from stackl.models import Room
+from stackl.events import Event
 
 
 VERSION = '0.0.0a'
@@ -25,7 +27,8 @@ class ChatClient:
         self.default_server = kwargs.get('default_server') or 'stackexchange.com'
         log_location = kwargs.get('log_location') or StreamHandler(stream=sys.stdout)
         log_level = kwargs.get('log_level') or logging.DEBUG
-        self.logger = logging.getLogger('stackl', log_level)
+        self.logger = logging.getLogger('stackl')
+        self.logger.setLevel(log_level)
         self.logger.addHandler(log_location)
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': 'stackl'})
@@ -50,6 +53,8 @@ class ChatClient:
                 logged_in = self._verify_login(kwargs.get('servers') or [self.default_server])
                 if logged_in is False:
                     self.logger.warn('Cookie login failed. Falling back to credential login.')
+                    for n, v in self.session.cookies.items():
+                        self.logger.info('{}: {}'.format(n, v))
 
         if not logged_in:
             logged_in = self._credential_authenticate(email, password, kwargs.get('servers') or [self.default_server])
@@ -65,7 +70,27 @@ class ChatClient:
         if server not in self._authed_servers:
             raise InvalidOperationError('Cannot join a room on a host we haven\'t authenticated to!')
 
-        # TODO
+        room = Room(server, room_id=room_id)
+        self.rooms.append(room)
+
+        self.session.get("https://chat.{}/rooms/{}".format(server, room_id), data={'fkey': self._fkeys[server]})
+
+        events = self.session.post("https://chat.{}/chats/{}/events".format(server, room_id), data={
+            'fkey': self._fkeys[server],
+            'since': 0,
+            'mode': 'Messages',
+            'msgCount': 100
+        }).json()['events']
+
+        event_data = [Event(x, server) for x in events]
+        room.add_events(event_data)
+
+        ws_auth_data = self.session.post("https://chat.{}/ws-auth".format(server), data={
+            'fkey': self._fkeys[server],
+            'roomid': room_id
+        })
+
+        # TODO websocket init
 
     def send(self, content, room=None, server=None):
         if room is None or server is None:
@@ -123,7 +148,7 @@ class ChatClient:
         for server in servers:
             chat_home = self.session.get("https://chat.{}/".format(server))
             chat_soup = BeautifulSoup(chat_home.text, 'html.parser')
-            self._fkeys[server] = chat_soup.select('input[name="fkey"]').get('value')
+            self._fkeys[server] = chat_soup.select('input[name="fkey"]')[0].get('value')
             topbar_links = chat_soup.select('.topbar-links span.topbar-menu-links a')
             if len(topbar_links) <= 0:
                 raise LoginError('Unable to verify login because page layout wasn\'t as expected. Wat?')

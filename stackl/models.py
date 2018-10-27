@@ -1,3 +1,4 @@
+import re
 import requests
 from bs4 import BeautifulSoup
 from stackl.helpers import Helpers
@@ -5,11 +6,12 @@ from stackl.tasks import Tasks
 
 
 class Room:
-    def __init__(self, room_id, server):
-        self.id = int(room_id)
+    def __init__(self, server, **kwargs):
+        self.id = int(kwargs.get('room_id'))
         self.server = server
-        self.url = "https://chat.{}/rooms/{}".format(server, room_id)
+        self.url = "https://chat.{}/rooms/{}".format(server, kwargs.get('room_id'))
         self.owners = []
+        self.events = []
 
         Tasks.do(self._scrape_room_info)
 
@@ -23,16 +25,19 @@ class Room:
         owner_cards = room_soup.select('.room-ownercards .usercard')
         for card in owner_cards:
             user_id = card.get('id').split('-')[-1]
-            self.owners.append(Helpers.cached(int(user_id), 'users', lambda: User(user_id, self.server)))
+            self.owners.append(Helpers.cached(int(user_id), 'users', lambda: User(self.server, user_id=user_id)))
 
         Helpers.cache(self.id, 'rooms', self)
 
+    def add_events(self, events):
+        self.events.extend(events)
+
 
 class User:
-    def __init__(self, user_id, server):
-        self.id = int(user_id)
+    def __init__(self,  server, **kwargs):
+        self.id = int(kwargs.get('user_id'))
         self.server = server
-        self.url = "https://chat.{}/users/{}".format(server, user_id)
+        self.url = "https://chat.{}/users/{}".format(server, kwargs.get('user_id'))
         self.in_rooms = []
         self.owns_rooms = []
 
@@ -56,18 +61,20 @@ class User:
     def _initialize_rooms(self, card_list):
         for room_card in card_list:
             room_id = room_card.get('id').split('-')[-1]
-            yield Helpers.cached(int(room_id), 'rooms', lambda: Room(room_id, self.server))
+            yield Helpers.cached(int(room_id), 'rooms', lambda: Room(self.server, room_id=room_id))
 
 
 class Message:
-    def __init__(self, server, message_id, timestamp, content, room_id, user_id, parent_id=None):
+    def __init__(self, server, **kwargs):
         self.server = server
-        self.id = int(message_id)
-        self.timestamp = timestamp
-        self.content = content
-        self.room = Helpers.cached(int(room_id), 'rooms', lambda: Room(room_id, server))
-        self.user = Helpers.cached(int(user_id), 'users', lambda: User(user_id, server))
-        self.parent_id = parent_id
+        self.id = int(kwargs.get('message_id'))
+        self.timestamp = kwargs.get('timestamp')
+        self.content = kwargs.get('content')
+        self.room = Helpers.cached(int(kwargs.get('room_id')), 'rooms',
+                                   lambda: Room(server, room_id=kwargs.get('room_id')))
+        self.user = Helpers.cached(int(kwargs.get('user_id')), 'users',
+                                   lambda: User(server, user_id=kwargs.get('user_id')))
+        self.parent_id = kwargs.get('parent_id')
 
         self._setup_delegate_methods()
 

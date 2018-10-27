@@ -25,6 +25,9 @@ class Helpers:
     @classmethod
     def cache(cls, key, scope=None, object=None):
         if scope is not None:
+            if scope not in cls._cache:
+                cls._cache[scope] = {}
+
             cls._cache[scope][key] = object
         else:
             cls._cache[key] = object
