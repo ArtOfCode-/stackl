@@ -14,7 +14,7 @@ from stackl.events import Event
 from stackl.wsclient import WSClient
 
 
-VERSION = '0.0.2'
+VERSION = '0.0.3'
 
 
 class ChatClient:
@@ -257,6 +257,15 @@ class ChatClient:
             req_data.update(data)
         return self.session.post('https://chat.{}{}'.format(server, path), data=req_data)
 
+    def get_message(self, message_id, server):
+        soup = BeautifulSoup(self.session.get('https://chat.{}/transcript/message/{}'.format(server, message_id)).text,
+                             'html.parser')
+        message = soup.select('#message-{}'.format(message_id))
+        user_id = re.match(r'/users/(\d+)', message.parent.parent.select('.signature .username a')[0].get('href'))[1]
+        room_id = re.match(r'/rooms/(\d+)', soup.select('.room-name a')[0].get('href'))[1]
+        content = self.session.get('https://chat.{}/message/{}?plain=true'.format(server, message_id)).text
+        return Message(server, message_id=message_id, room_id=room_id, user_id=user_id, content=content)
+
     def toggle_star(self, message_id, server):
         self._chat_post_fkeyed(server, '/messages/{}/star'.format(message_id))
 
@@ -278,7 +287,8 @@ class ChatClient:
             self.toggle_star(message_id, server)
 
     def has_starred(self, message_id, server):
-        star_soup = BeautifulSoup(self.session.get('https://chat.{}/transcript/message/{}'.format(server, message_id)),
+        star_soup = BeautifulSoup(self.session.get('https://chat.{}/transcript/message/{}'
+                                                   .format(server, message_id)).text,
                                   'html.parser')
         counter = star_soup.select('#message-{} .flash .stars'.format(message_id))
         return len(counter) > 0 and 'user-star' in counter[0].get('class')
@@ -304,7 +314,8 @@ class ChatClient:
             self.toggle_pin(message_id, server)
 
     def is_pinned(self, message_id, server):
-        star_soup = BeautifulSoup(self.session.get('https://chat.{}/transcript/message/{}'.format(server, message_id)),
+        star_soup = BeautifulSoup(self.session.get('https://chat.{}/transcript/message/{}'
+                                                   .format(server, message_id)).text,
                                   'html.parser')
         counter = star_soup.select('#message-{} .flash .stars'.format(message_id))
         return len(counter) > 0 and 'owner-star' in counter[0].get('class')
