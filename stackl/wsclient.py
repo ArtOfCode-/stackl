@@ -12,7 +12,8 @@ class WSClient:
         self._close_socket = False
         self.ws = None
 
-        threading.Thread(name='wsclient', target=self._run_websocket).start()
+        self.thread = threading.Thread(name='wsclient', target=self._run_websocket)
+        self.thread.start()
 
     def _run_websocket(self):
         self.ws = ws.create_connection(self.url, origin='https://chat.{}'.format(self.server), cookie=self.cookies)

@@ -103,7 +103,7 @@ class ChatClient:
             'msgCount': 100
         }).json()['events']
 
-        event_data = [Event(x, server) for x in events]
+        event_data = [Event(x, server, self) for x in events]
         room.add_events(event_data)
 
         ws_auth_data = self.session.post("https://chat.{}/ws-auth".format(server), data={
@@ -231,7 +231,12 @@ class ChatClient:
         :param server: the server on which the message was received
         :return: None
         """
-        data = json.loads(data)
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            self.logger.warn('Received non-JSON data from WS. Bail!')
+            return
+
         events = [v['e'] for k, v in data.items() if k[0] == 'r' and 'e' in v]
         events = [x for s in events for x in s]
 

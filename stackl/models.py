@@ -32,6 +32,9 @@ class Room:
     def add_events(self, events):
         self.events.extend(events)
 
+    def __repr__(self):
+        return '<Room {} ([{}])>'.format(self.id, ', '.join(self.__dict__.keys()))
+
 
 class User:
     def __init__(self,  server, **kwargs):
@@ -47,7 +50,7 @@ class User:
         user_page = requests.get(self.url)
         user_soup = BeautifulSoup(user_page.text, 'html.parser')
 
-        self.username = user_soup.select('.content h1')[0].text
+        self.username = user_soup.select('h1')[0].text
         self.is_moderator = '♦' in user_soup.select('.usercard-xxl .user-status')[0].text
         try:
             self.bio = user_soup.select('.user-stats tr')[3].select('td')[-1].text
@@ -66,6 +69,9 @@ class User:
         for room_card in card_list:
             room_id = room_card.get('id').split('-')[-1]
             yield Helpers.cached(int(room_id), 'rooms', lambda: Room(self.server, room_id=room_id))
+
+    def __repr__(self):
+        return '<User {} ([{}])>'.format(self.id, ', '.join(self.__dict__.keys()))
 
 
 class Message:
@@ -113,3 +119,6 @@ class Message:
 
         for name in method_names:
             setattr(self, name, create_delegate(name))
+
+    def __repr__(self):
+        return '<Message {} ([{}])>'.format(self.id, ', '.join(self.__dict__.keys()))

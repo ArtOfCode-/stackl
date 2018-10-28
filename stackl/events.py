@@ -120,4 +120,5 @@ class Event:
             setattr(self, k, v)
 
     def __repr__(self):
-        return '<Event {}>'.format(self.__dict__)
+        return '<Event \'{}\' {}>'.format(self.shorthand,
+                                          {k: self.__dict__[k] for k in self.__dict__ if k not in ['raw', 'shorthand']})
